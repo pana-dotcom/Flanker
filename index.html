@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Flankerテスト</title>
+
+<style>
+body {
+  text-align: center;
+  font-family: sans-serif;
+  margin-top: 60px;
+  touch-action: manipulation;
+}
+
+#stimulus {
+  font-size: 90px;
+  margin: 40px 0;
+}
+
+#timer {
+  font-size: 36px;
+  color: red;
+  display: none;
+}
+
+#instruction {
+  font-size: 18px;
+  width: 80%;
+  margin: auto;
+  line-height: 1.6;
+}
+
+button {
+  font-size: 26px;
+  padding: 15px 25px;
+  margin: 10px;
+  outline: none;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Flankerテスト</h2>
+
+<div id="instruction">
+  <p>
+    中央の矢印の向きを判断してください。<br>
+    左なら「左ボタン」、右なら「右ボタン」を押します。<br><br>
+    制限時間は1分です。
+  </p>
+</div>
+
+<div id="timer"></div>
+<div id="stimulus"></div>
+
+<button id="startBtn">開始</button>
+
+<div id="controls" style="display:none;">
+  <button id="leftBtn">←</button>
+  <button id="rightBtn">→</button>
+</div>
+
+<script>
+const baseStimuli = [
+  { text: "<<<<<", answer: "ArrowLeft" },
+  { text: ">>>>>", answer: "ArrowRight" },
+  { text: "<<><<", answer: "ArrowRight" },
+  { text: ">><>>", answer: "ArrowLeft" }
+];
+
+let stimuli = [];
+let current = 0;
+let startTime;
+let results = [];
+let started = false;
+let timeLeft = 60;
+let timerInterval;
+let wakeLock = null;
+
+const startBtn = document.getElementById("startBtn");
+
+// ✅ フルスクリーン
+function enterFullscreen() {
+  if (document.documentElement.requestFullscreen) {
+    document.documentElement.requestFullscreen();
+  }
+}
+
+// ✅ スリープ防止
+async function requestWakeLock() {
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+  } catch (e) {}
+}
+
+// ✅ 開始
+startBtn.addEventListener("click", async () => {
+
+  startBtn.style.display = "none";
+  document.getElementById("instruction").style.display = "none";
+  document.getElementById("timer").style.display = "block";
+  document.getElementById("controls").style.display = "block";
+
+  started = true;
+
+  enterFullscreen();
+  await requestWakeLock();
+
+  for (let i = 0; i < 200; i++) {
+    const s = baseStimuli[Math.floor(Math.random() * baseStimuli.length)];
+    stimuli.push(s);
+  }
+
+  document.getElementById("timer").textContent = timeLeft;
+
+  startTimer();
+  showStimulus();
+});
+
+function startTimer() {
+  timerInterval = setInterval(() => {
+    timeLeft--;
+    document.getElementById("timer").textContent = timeLeft;
+
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      endExperiment();
+    }
+  }, 1000);
+}
+
+function showStimulus() {
+  if (!started) return;
+
+  const s = stimuli[current];
+
+  requestAnimationFrame(() => {
+    document.getElementById("stimulus").textContent = s.text;
+
+    // ✅ 高精度開始
+    startTime = performance.now();
+  });
+}
+
+// ✅ 応答処理
+function handleResponse(input, e) {
+  if (!started || timeLeft <= 0) return;
+
+  if (e) e.preventDefault();
+
+  const s = stimuli[current];
+
+  let reactionTime = Math.round(performance.now() - startTime);
+  let correct = (input === s.answer);
+
+  results.push({
+    trial: current + 1,
+    stimulus: s.text,
+    response: input,
+    correct: correct,
+    reaction_time: reactionTime
+  });
+
+  current++;
+  setTimeout(showStimulus, 150);
+}
+
+// ✅ 高速タッチ
+document.getElementById("leftBtn").addEventListener("touchend", e => handleResponse("ArrowLeft", e), { passive: false });
+document.getElementById("rightBtn").addEventListener("touchend", e => handleResponse("ArrowRight", e), { passive: false });
+
+// ✅ PC対応
+document.getElementById("leftBtn").addEventListener("mousedown", () => handleResponse("ArrowLeft"));
+document.getElementById("rightBtn").addEventListener("mousedown", () => handleResponse("ArrowRight"));
+
+// ✅ 終了
+function endExperiment() {
+  started = false;
+  document.getElementById("stimulus").textContent = "終了！";
+
+  if (document.exitFullscreen) {
+    document.exitFullscreen();
+  }
+
+  if (wakeLock) {
+    wakeLock.release();
+  }
+
+  downloadCSV();
+}
+
+// ✅ CSV
+function downloadCSV() {
+  let csv = "trial,stimulus,response,correct,reaction_time\n";
+
+  results.forEach(r => {
+    csv += `${r.trial},${r.stimulus},${r.response},${r.correct},${r.reaction_time}\n`;
+  });
+
+  const blob = new Blob([csv], { type: "text/csv" });
+
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth()+1).padStart(2,"0");
+  const d = String(now.getDate()).padStart(2,"0");
+  const h = String(now.getHours()).padStart(2,"0");
+  const min = String(now.getMinutes()).padStart(2,"0");
+
+  const filename = `Flanker_${y}${m}${d}_${h}${min}.csv`;
+
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+}
+</script>
+
+</body>
+</html>
